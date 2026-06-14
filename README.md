@@ -47,41 +47,39 @@
 ├── *.py                       # 各算法实现脚本
 ├── *.md                       # 算法说明文档
 ├── *_train.png                # 训练曲线图
-└── *_actor_net.pt             # 训练好的模型权重
+└── *_actor_net.pt             # 部分文件训练好的动作网络权重
 ```
 
 ## 安装
 
-**环境要求**: Python 3.10+
+**环境要求**: Python 3.10左右
 
 ```bash
 pip install gymnasium ale-py numpy torch matplotlib
 ```
 
+部分环境模块
+```bash
+pip install "gymnasium[atari]"
+pip install "gymnasium[box2d]"
+pip install "gymnasium[mujoco]"
+
+```
+所有
+```bash
+pip install "gymnasium[all]"
+```
+
 ## 使用方法
 
-每个算法脚本都可以独立运行：
+每个算法脚本独立运行
 
 ```bash
-# 例如运行DQN算法
+
 python DQN-CartPole.py
 
 # 查看环境信息
 python test_env.py
 ```
 
-## 特性
-
-- 每个算法都有完整的实现和训练可视化
-- 包含训练曲线图和保存的模型权重
-- 代码结构清晰，便于学习和修改
-- 支持多种经典强化学习环境
-
-## 依赖项
-
-- gymnasium: 强化学习环境接口
-- ale-py: Atari学习环境
-- numpy: 数值计算
-- torch: 深度学习框架
-- matplotlib: 数据可视化
 
