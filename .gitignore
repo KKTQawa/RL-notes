@@ -38,15 +38,3 @@ env/
 *.pkl
 *.pickle
 
-# Training data
-saves/
-model/
-
-# Test files
-test.py
-test.md
-all.txt
-
-# OS
-.DS_Store
-Thumbs.db
