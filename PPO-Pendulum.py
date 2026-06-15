@@ -21,10 +21,11 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 device = 'cpu'  # 强制使用 CPU，有时由于数据传输开销，GPU 并非总是更快
 
 # 连续动作策略网络（Actor），输出动作的均值和标准差
-class ContinuousPolicyNet(nn.Module):
+class ActorNet(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_dim):
         super().__init__()
         self.fc1 = nn.Linear(state_dim, hidden_dim)  # 输入层到隐藏层
+        #高斯分布：均值、方差
         self.fc_mean = nn.Linear(hidden_dim, action_dim)  # 输出动作均值
         # 使用可训练参数定义对数标准差，确保标准差为正
         self.fc_log_std = nn.Parameter(torch.zeros(action_dim))
@@ -59,7 +60,7 @@ def train():
     # 超参数设置
     learning_rate_actor = 0.0003  # Actor 网络学习率，控制策略更新速度
     learning_rate_critic = 0.001  # Critic 网络学习率，控制价值估计更新速度
-    discount_factor_g = 0.99  # 折扣因子 gamma，用于计算未来奖励的折现
+    gamma = 0.99  # 折扣因子 gamma，用于计算未来奖励的折现
 
     clip_epsilon = 0.2  # PPO 剪切参数，限制新旧策略的更新幅度
     gae_lambda = 0.95  # GAE 的 λ 参数，平衡偏差与方差
@@ -81,7 +82,7 @@ def train():
     print(f'状态空间维度: {states_dim}, 动作空间维度: {actions_dim}')
 
     # 初始化 Actor 和 Critic 网络并移到指定设备
-    actor_net = ContinuousPolicyNet(states_dim, actions_dim, hidden_dim).to(device)
+    actor_net = ActorNet(states_dim, actions_dim, hidden_dim).to(device)
     critic_net = ValueNet(states_dim, hidden_dim).to(device)
 
     # 定义优化器和损失函数
@@ -94,24 +95,28 @@ def train():
         state = env.reset()[0]  # 重置环境，获取初始状态
         state = torch.tensor(state, dtype=torch.float, device=device)
         rewards_one_episode = 0  # 当前回合的总奖励
-        transition_dict = {'states': [], 'actions': [], 'log_probs': [], 'next_states': [], 'rewards': [], 'terminated': []}
+        transition_dict = {'states': [], 'actions': [], 'log_probs': [], 'next_states': [], 'rewards': [], 'terminated': [],'truncated':[]}
 
         # 收集一个回合的轨迹数据
+        #按轮次更新
         with torch.no_grad():  # 采样时不计算梯度，节省计算资源
             for t in range(max_steps_per_episode):
                 mean, std = actor_net(state)
                 dist = Normal(mean, std)
-                action = dist.sample()
-                # 计算对数概率：log π(a|s) = log N(a|μ, σ)
-                log_prob = dist.log_prob(action).sum(dim=-1)
+                u = dist.sample()
+                # # 计算对数概率：log π(a|s) = log N(a|μ, σ)-log(1-tanh^2(N(a|μ, σ)))
+                #PPO/SAC动作修正
+                # log_prob = dist.log_prob(u).sum(dim=-1)
+                log_prob = dist.log_prob(u) - torch.log(1 - torch.tanh(u).pow(2) + 1e-6)
+                log_prob = log_prob.sum(-1)
+                # # 将动作缩放到 [-2, 2]
+                a = torch.tanh(u) * action_scale
 
-                # 将动作缩放到 [-2, 2]
-                action_clipped = torch.tanh(action) * action_scale
                 # print(f'action {action}')
                 # print(f'action_clipped {action_clipped}')
                 # print(f'action_clipped.numpy() {action_clipped.numpy()}')
                 # exit()
-                next_state, reward, terminated, truncated, _ = env.step(action_clipped.numpy())
+                next_state, reward, terminated, truncated, _ = env.step(a.numpy())
 
                 rewards_one_episode += reward
 
@@ -119,13 +124,15 @@ def train():
                 next_state = torch.tensor(next_state, dtype=torch.float, device=device)
                 reward = torch.tensor(reward, dtype=torch.float, device=device)
                 terminated = torch.tensor(terminated, dtype=torch.float, device=device)
-
+                truncated = torch.tensor(truncated, dtype=torch.float, device=device)
                 transition_dict['states'].append(state)
-                transition_dict['actions'].append(action)
+                transition_dict['actions'].append(a)
                 transition_dict['rewards'].append(reward)
                 transition_dict['next_states'].append(next_state)
                 transition_dict['terminated'].append(terminated)
+                transition_dict['truncated'].append(truncated)
                 transition_dict['log_probs'].append(log_prob)
+
 
                 state = next_state  # 更新状态
                 if terminated or truncated:  # 回合结束条件
@@ -140,19 +147,21 @@ def train():
         rewards = torch.stack(transition_dict['rewards'])
         next_states = torch.stack(transition_dict['next_states'])
         terminated = torch.stack(transition_dict['terminated'])
+        truncated = torch.stack(transition_dict['truncated'])
         old_log_probs = torch.stack(transition_dict['log_probs'])
+        done = (terminated.bool() | truncated.bool()).float()
 
         # 计算 GAE 优势函数和回报
         values = critic_net(states).squeeze()# 当前状态的价值估计
         next_values = critic_net(next_states).squeeze() # 下一状态的价值估计
         # 时序差分误差 (TD error): δ = r + γ * V(s') * (1 - done) - V(s)
-        deltas = rewards + discount_factor_g * next_values * (1 - terminated) - values
+        deltas = rewards + gamma * next_values * (1 - done) - values
         advantages = []
         advantage = 0
         # GAE 计算：从后向前累积优势
         for delta in reversed(deltas.tolist()):
             # 应用GAE核心公式：a_t = δ_t + γ * λ * a_{t+1}
-            advantage = delta + discount_factor_g * gae_lambda * advantage
+            advantage = delta + gamma * gae_lambda * advantage
             advantages.insert(0, advantage)
         advantages = torch.tensor(advantages, dtype=torch.float, device=device)
 
@@ -177,6 +186,7 @@ def train():
             - L_clip = E[min(r(θ) * A, clip(r(θ), 1-ε, 1+ε) * A)]  # 剪切代理目标
             - L_vf = E[(V(s) - R)^2]  # Critic 的均方误差损失
             """
+            #计算actor 损失
             ratios = torch.exp(new_log_probs - old_log_probs)  # r(θ)
             surr1 = ratios * advantages # 未剪切的代理目标
             surr2 = torch.clamp(ratios, 1 - clip_epsilon, 1 + clip_epsilon) * advantages  # 剪切后的代理目标
@@ -188,10 +198,11 @@ def train():
 
             # 反向传播和参数更新
             actor_optimizer.zero_grad()
-            critic_optimizer.zero_grad()
             actor_loss.backward()
-            critic_loss.backward()
             actor_optimizer.step()
+
+            critic_optimizer.zero_grad()
+            critic_loss.backward()
             critic_optimizer.step()
 
         # 记录和可视化训练结果
@@ -219,7 +230,7 @@ def test():
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0]
 
-    actor_net = ContinuousPolicyNet(state_dim, action_dim, 128).to(device)
+    actor_net = ActorNet(state_dim, action_dim, 128).to(device)
     try:
         actor_net.load_state_dict(torch.load('PPO-Pendulum_actor_net.pt', map_location=device))
     except FileNotFoundError:

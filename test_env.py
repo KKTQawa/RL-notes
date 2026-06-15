@@ -21,7 +21,7 @@ class WrappedEnv(gym.Wrapper):
 
 # 创建原始环境
 gym.register_envs(ale_py)
-env = gym.make('CartPole-v1', render_mode="human")#human表示渲染模式为human，即在屏幕上显示环境状态
+env = gym.make('Zaxxon-v0', render_mode="human")#human表示渲染模式为human，即在屏幕上显示环境状态
 print('env.spec:',env.spec)
 print('observation_space:',env.observation_space)
 print('action_space:',env.action_space)
