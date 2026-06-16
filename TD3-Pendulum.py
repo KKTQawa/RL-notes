@@ -68,7 +68,7 @@ def train():
     # === 超参数设置 ===
     learning_rate_actor = 0.0003  # Actor 学习率，控制策略更新速度
     learning_rate_critic = 0.001  # Critic 学习率，控制 Q 值更新速度
-    discount_factor_g = 0.99  # 折扣因子 γ，用于计算未来奖励的折现，公式：Q(s,a) = r + γ * Q(s',a')
+    gamma = 0.99  # 折扣因子 γ，用于计算未来奖励的折现，公式：Q(s,a) = r + γ * Q(s',a')
     hidden_dim = 128  # 隐藏层神经元数量，决定网络容量
     max_steps_per_episode = 10000  # 每个回合的最大步数上限
     buffer_size = 100000  # 经验回放缓冲区容量
@@ -98,6 +98,7 @@ def train():
     actor_target = PolicyNet(states_dim, actions_dim, hidden_dim, action_bound).to(device)  # 目标策略网络
     actor_target.load_state_dict(actor.state_dict())  # 初始化时同步参数
 
+    #双Q网络 双target网络
     critic_1 = QValueNet(states_dim, actions_dim, hidden_dim).to(device)  # 主 Critic 网络 1
     critic_1_target = QValueNet(states_dim, actions_dim, hidden_dim).to(device)  # 目标 Critic 网络 1
     critic_1_target.load_state_dict(critic_1.state_dict())
@@ -117,38 +118,41 @@ def train():
         state = env.reset()[0]  # 重置环境，获取初始状态
         state = torch.tensor(state, dtype=torch.float32, device=device)  # 转换为张量
         rewards_one_episode = 0  # 当前回合的总奖励
-        terminated = False  # 是否终止
-        truncated = False  # 是否截断
+        is_end=False
 
         # === 收集一个回合的经验 ===
-        while not (terminated or truncated) and rewards_one_episode < 100:
-            with torch.no_grad():  # 采样时不计算梯度，节省资源
+        while not is_end and rewards_one_episode < 100:
+            with torch.no_grad(): 
                 action = actor(state).flatten()  # Actor 输出动作
                 noise = np.random.normal(0, noise_std, size=actions_dim)  # 添加高斯噪声以探索
                 action = np.clip(action.cpu().numpy() + noise, -action_bound, action_bound)  # 裁剪动作
                 action = torch.tensor(action, dtype=torch.float32, device=device)  # 转换回张量
 
             next_state, reward, terminated, truncated, _ = env.step(action.numpy())  # 执行动作
+            is_end=terminated or truncated
             rewards_one_episode += reward  # 累加奖励
 
             next_state = torch.tensor(next_state, dtype=torch.float32, device=device)  # 下一状态
             reward = torch.tensor([reward], dtype=torch.float32, device=device)  # 奖励
-            terminated = torch.tensor([terminated], dtype=torch.float32, device=device)  # 终止标志
-
-            replay_buffer.append((state, action, next_state, reward, terminated))  # 存入经验缓冲区
+            termination = torch.tensor([terminated], dtype=torch.float32, device=device)  # 终止标志
+            truncation = torch.tensor([truncated], dtype=torch.float32, device=device)  # 截断标志
+            
+            replay_buffer.append((state, action, next_state, reward, termination, truncation))  # 存入经验缓冲区
             state = next_state  # 更新当前状态
 
             # === 开始训练 ===
             if len(replay_buffer) > batch_size:  # 缓冲区足够大时开始训练
                 update_iter += 1  # 更新计数器递增
                 mini_batch = replay_buffer.sample(batch_size)  # 随机采样
-                states, actions, new_states, rewards, terminations = zip(*mini_batch)  # 解包
-
+                states, actions, new_states, rewards, terminations, truncated = zip(*mini_batch)  # 解包
+                
                 states = torch.stack(states)  # 转换为张量堆栈
                 actions = torch.stack(actions)
                 new_states = torch.stack(new_states)
                 rewards = torch.stack(rewards)
                 terminations = torch.stack(terminations)
+                truncated = torch.stack(truncated)
+                done=terminations.bool()|truncated.bool()
 
                 # === TD3 核心要素 1：目标策略平滑正则化 ===
                 # 数学公式：a' = π(s') + ε, ε ~ clip(N(0, σ), -c, c)
@@ -161,11 +165,10 @@ def train():
 
                     # === TD3 核心要素 2：双重 Q 值计算 ===
                     # 数学公式：Q_target = r + γ * min(Q1'(s', a'), Q2'(s', a'))
-                    # 说明：使用两个 Critic 网络，取最小值减少 Q 值过估计
                     target_q1 = critic_1_target(new_states, next_actions)  # Critic 1 的目标 Q 值
                     target_q2 = critic_2_target(new_states, next_actions)  # Critic 2 的目标 Q 值
                     target_q = torch.min(target_q1, target_q2)  # 取最小值
-                    q_targets = rewards + discount_factor_g * target_q * (1 - terminations)  # Bellman 方程
+                    q_targets = rewards + gamma * target_q * (1 - done.float())  # Bellman 方程
 
                 # === 更新 Critic 网络 ===
                 q1_values = critic_1(states, actions)  # 当前 Q 值估计
@@ -222,6 +225,7 @@ def train():
             torch.save(actor.state_dict(), "TD3-Pendulum_actor_net.pt")
             # torch.save(critic_1.state_dict(), "TD3-Pendulum_critic_1_net.pt")
             # torch.save(critic_2.state_dict(), "TD3-Pendulum_critic_2_net.pt")
+
 #Pendulum 坚持倒立越久，奖励越高 默认最大步数为 200
 def test():
     # === 测试函数 ===
@@ -263,5 +267,5 @@ def test():
     env.close()
 
 if __name__ == '__main__':
-    #train(isLoad=False)  # 默认运行训练
+    train()  # 默认运行训练
     test()  # 注释掉测试，训练后可手动取消注释运行

@@ -46,7 +46,7 @@ def train(enable_double_dqn=True, render=False):
     # 超参数设置
     learning_rate_actor = 0.001  # Actor 网络学习率，控制策略更新速度
     learning_rate_critic = 0.01  # Critic 网络学习率，控制价值估计更新速度
-    discount_factor_g = 0.98  # 折扣因子 gamma，用于计算未来奖励的折现
+    gamma = 0.98  # 折扣因子 gamma，用于计算未来奖励的折现
     target_update_freq = 10  # 目标网络更新频率（仅在启用 Double DQN 时有效）
     hidden_dim = 128  # 隐藏层神经元数量，决定网络容量
     max_steps_per_episode = 1000  # 每个回合的最大步数上限
@@ -79,7 +79,7 @@ def train(enable_double_dqn=True, render=False):
         state = env.reset()[0]  # 重置环境，获取初始状态
         state = torch.tensor(state, dtype=torch.float, device=device)
         rewards_one_episode = 0  # 当前回合的总奖励
-        transition_dict = {"states": [], "actions": [], "next_states": [], "rewards": [], "terminated": []}
+        transition_dict = {"states": [], "actions": [], "next_states": [], "rewards": [], "done": []}
 
         # 收集一个回合的轨迹数据
         with torch.no_grad():  # 采样时不计算梯度，节省计算资源
@@ -95,13 +95,13 @@ def train(enable_double_dqn=True, render=False):
                 # 将数据转换为张量并存储到轨迹中
                 next_state = torch.tensor(next_state, dtype=torch.float, device=device)
                 reward = torch.tensor(reward, dtype=torch.float, device=device)
-                terminated = torch.tensor(terminated, dtype=torch.float, device=device)
+                done = torch.tensor(terminated or truncated, dtype=torch.float, device=device)
 
                 transition_dict["states"].append(state)
                 transition_dict["actions"].append(action)
                 transition_dict["rewards"].append(reward)
                 transition_dict["next_states"].append(next_state)
-                transition_dict["terminated"].append(terminated)
+                transition_dict["done"].append(done)
 
                 state = next_state  # 更新状态
                 if terminated or truncated:  # 回合结束条件
@@ -115,38 +115,37 @@ def train(enable_double_dqn=True, render=False):
         actions = torch.stack(transition_dict["actions"])
         rewards = torch.stack(transition_dict["rewards"])
         next_states = torch.stack(transition_dict["next_states"])
-        terminated = torch.stack(transition_dict["terminated"])
+        done = torch.stack(transition_dict["done"])
 
         # 计算时序差分目标（TD Target）和优势估计
         with torch.no_grad():
             # 使用目标网络计算下一状态的价值 V(s『)
             next_values = target_critic_net(next_states).squeeze()
             # TD 目标：r + γ * V(s』) * (1 - done)
-            td_target = rewards + discount_factor_g * next_values * (1 - terminated)
+            td_target = rewards + gamma * next_values * (1 - done)
         # 当前状态的价值估计 V(s)
         values = critic_net(states).squeeze()
         # 优势函数 A(s, a) = TD_target - V(s)
         advantages = td_target - values
 
-        # 计算 Actor 损失（策略梯度）
+        # Actor 更新
+        #随机策略
         # log π(a|s)：对策略网络输出的动作概率取对数
         log_probs = torch.log(actor_net(states).gather(1, actions.unsqueeze(1))).squeeze()
         # Actor 损失：-log π(a|s) * A(s, a)，负号表示最大化目标
         actor_loss = torch.mean(-log_probs * advantages.detach())
+        actor_optimizer.zero_grad()  # 清空 Actor 梯度
+        actor_loss.backward()  # 计算 Actor 损失的梯度
+        actor_optimizer.step()  # 更新 Actor 参数
 
-        # 计算 Critic 损失
+        # Critic 更新
         # Critic 的目标是使 V(s) 逼近 TD 目标
         critic_loss = critic_loss_fn(values, td_target.detach())
-
-        # 更新网络参数
-        actor_optimizer.zero_grad()  # 清空 Actor 梯度
         critic_optimizer.zero_grad()  # 清空 Critic 梯度
-        actor_loss.backward()  # 计算 Actor 损失的梯度
         critic_loss.backward()  # 计算 Critic 损失的梯度
-        actor_optimizer.step()  # 更新 Actor 参数
         critic_optimizer.step()  # 更新 Critic 参数
 
-        # 更新目标网络（软更新或硬更新）
+        # 更新目标网络
         if episodes_iter % target_update_freq == 0:
             target_critic_net.load_state_dict(critic_net.state_dict())  # 硬更新目标网络
 
@@ -163,7 +162,7 @@ def train(enable_double_dqn=True, render=False):
             plt.savefig("A2C-cartpole_train.png")
             plt.close()
 
-            # 保存模型参数
+            # 保存模型动作头
             torch.save(actor_net.state_dict(), "A2C-cartpole_actor_net.pt")
             #torch.save(critic_net.state_dict(), "A2C-cartpole_critic_net.pt")
 

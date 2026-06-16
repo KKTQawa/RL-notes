@@ -124,6 +124,7 @@ def train():
                 action = torch.tensor(action, dtype=torch.float32, device=device)  # 转换回张量
 
             next_state, reward, terminated, truncated, _ = env.step(action.numpy())
+            done = terminated or truncated
             rewards_one_episode += reward
 
             # 将数据转换为张量并存储到轨迹中
@@ -131,7 +132,6 @@ def train():
             reward = torch.tensor([reward], dtype=torch.float32, device=device).detach()
             terminated = torch.tensor([terminated], dtype=torch.float32, device=device).detach()
             truncated = torch.tensor([truncated], dtype=torch.float32, device=device).detach()
-            done = terminated.bool() | truncated.bool()
 
             replay_buffer.append((state, action.detach(), next_state, reward, terminated, truncated))
 
@@ -153,7 +153,7 @@ def train():
                 with torch.no_grad():
                     next_actions = actor_target(new_states)
                     next_Q = critic_target(new_states, next_actions)
-                    target_Q = rewards + gamma * next_Q * (1 - done.float())  # Bellman 方程
+                    target_Q = rewards + gamma * next_Q * (1 - done)  # Bellman 方程
                 
                 # 更新 Critic
                 q_values = critic(states, actions)
@@ -177,7 +177,7 @@ def train():
                 for target_param, param in zip(critic_target.parameters(), critic.parameters()):
                     target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
 
-            if done.item():
+            if done:
                 break
         rewards_all_episodes.append(rewards_one_episode)
         episodes_iter += 1
