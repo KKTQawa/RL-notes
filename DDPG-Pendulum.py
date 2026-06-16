@@ -23,7 +23,7 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 device = 'cpu'  # 强制使用 CPU，有时由于数据传输开销，GPU 并非总是更快
 
 # 策略网络（Actor），输出确定性动作
-class PolicyNet(nn.Module):
+class ActorNet(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_dim, action_bound):
         super().__init__()
         self.fc1 = nn.Linear(state_dim, hidden_dim)
@@ -37,7 +37,7 @@ class PolicyNet(nn.Module):
         return torch.tanh(self.fc3(x)) * self.action_bound  # 输出范围 [-action_bound, action_bound]
 
 # Q 值网络（Critic），估计状态-动作对的价值
-class QValueNet(nn.Module):
+class CriticNet(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_dim):
         super().__init__()
         self.fc1 = nn.Linear(state_dim + action_dim, hidden_dim)
@@ -70,7 +70,7 @@ def train():
     # 超参数设置
     learning_rate_actor = 0.0003  # Actor 网络学习率，控制策略更新速度
     learning_rate_critic = 0.001  # Critic 网络学习率，控制价值估计更新速度
-    discount_factor_g = 0.99  # 折扣因子 gamma，用于计算未来奖励的折现
+    gamma = 0.99  # 折扣因子 gamma，用于计算未来奖励的折现
 
     hidden_dim = 128  # 隐藏层神经元数量，决定网络容量
     max_steps_per_episode = 10000  # 每个回合的最大步数上限
@@ -87,7 +87,6 @@ def train():
     rewards_all_episodes = []  # 存储每个回合的总奖励
     episodes_iter = 0  # 回合计数器
 
-    # 创建 Pendulum-v1 环境
     env = gym.make('Pendulum-v1')
     states_dim = env.observation_space.shape[0]
     actions_dim = env.action_space.shape[0]
@@ -95,21 +94,20 @@ def train():
     print(f'状态空间维度: {states_dim}, 动作空间维度: {actions_dim}')
 
     # 初始化 Actor 和 Critic 网络并移到指定设备
-    actor = PolicyNet(states_dim, actions_dim, hidden_dim, action_bound).to(device)
-    actor_target = PolicyNet(states_dim, actions_dim, hidden_dim, action_bound).to(device)
+    actor = ActorNet(states_dim, actions_dim, hidden_dim, action_bound).to(device)
+    actor_target = ActorNet(states_dim, actions_dim, hidden_dim, action_bound).to(device)
     actor_target.load_state_dict(actor.state_dict())
 
-    critic = QValueNet(states_dim, actions_dim, hidden_dim).to(device)
-    critic_target = QValueNet(states_dim, actions_dim, hidden_dim).to(device) 
+    critic = CriticNet(states_dim, actions_dim, hidden_dim).to(device)
+    critic_target = CriticNet(states_dim, actions_dim, hidden_dim).to(device) 
     critic_target.load_state_dict(critic.state_dict())
     # 定义优化器和损失函数
     actor_optimizer = torch.optim.Adam(actor.parameters(), lr=learning_rate_actor)
     critic_optimizer = torch.optim.Adam(critic.parameters(), lr=learning_rate_critic)
-    critic_loss_fn = nn.MSELoss()  #  使用均方误差损失，优化价值估计
 
     # 训练主循环
     for episode in range(140):
-        state = env.reset()[0]  # 重置环境，获取初始状态
+        state = env.reset()[0]  
         state = torch.tensor(state, dtype=torch.float32, device=device)
         rewards_one_episode = 0  # 当前回合的总奖励
 
@@ -120,46 +118,50 @@ def train():
         for t in range(max_steps_per_episode):
         #while not( terminated or truncated) and rewards_one_episode < 100:
             with torch.no_grad():  # 采样时不计算梯度，节省计算资源
-                action = actor(state).flatten()
+                action = actor(state).flatten()#flatten():展平输出，将动作转换为一维张量
                 noise = np.random.normal(0, noise_std, size=actions_dim)  # 高斯噪声
-                action = np.clip(action.cpu().numpy() + noise, -action_bound, action_bound)  # NumPy 操作
+                action = np.clip(action.cpu().numpy() + noise, -action_bound, action_bound)#将动作限制在 [-action_bound, action_bound] 范围内
                 action = torch.tensor(action, dtype=torch.float32, device=device)  # 转换回张量
 
             next_state, reward, terminated, truncated, _ = env.step(action.numpy())
             rewards_one_episode += reward
 
             # 将数据转换为张量并存储到轨迹中
-            next_state = torch.tensor(next_state, dtype=torch.float32, device=device)
-            reward = torch.tensor([reward], dtype=torch.float32, device=device)
-            terminated = torch.tensor([terminated], dtype=torch.float32, device=device)
+            next_state = torch.tensor(next_state, dtype=torch.float32, device=device).detach()
+            reward = torch.tensor([reward], dtype=torch.float32, device=device).detach()
+            terminated = torch.tensor([terminated], dtype=torch.float32, device=device).detach()
+            truncated = torch.tensor([truncated], dtype=torch.float32, device=device).detach()
+            done = terminated.bool() | truncated.bool()
 
-            replay_buffer.append((state, action, next_state, reward, terminated))
+            replay_buffer.append((state, action.detach(), next_state, reward, terminated, truncated))
 
             state = next_state  # 更新状态
 
             # 如果缓冲区足够大，开始训练
             if len(replay_buffer) > batch_size:
                 mini_batch = replay_buffer.sample(batch_size)
-                states, actions, new_states, rewards, terminations = zip(*mini_batch)
+                states, actions, new_states, rewards, terminations, truncated = zip(*mini_batch)
 
                 states = torch.stack(states)  #直接变成  shape = (mini_batch_size, states.n=3)
                 actions = torch.stack(actions)
                 new_states = torch.stack(new_states)
                 rewards = torch.stack(rewards)
                 terminations = torch.stack(terminations)
+                truncated = torch.stack(truncated)
 
                 # 计算目标 Q 值
                 with torch.no_grad():
                     next_actions = actor_target(new_states)
-                    target_q = critic_target(new_states, next_actions)
-                    q_targets = rewards + discount_factor_g * target_q * (1 - terminations)  # Bellman 方程
-
+                    next_Q = critic_target(new_states, next_actions)
+                    target_Q = rewards + gamma * next_Q * (1 - done.float())  # Bellman 方程
+                
                 # 更新 Critic
                 q_values = critic(states, actions)
-                critic_loss = critic_loss_fn(q_values, q_targets)
+                critic_loss = nn.MSELoss()(q_values, target_Q)
+
                 critic_optimizer.zero_grad()
                 critic_loss.backward()
-                torch.nn.utils.clip_grad_norm_(critic.parameters(), 1.0)  # 梯度裁剪
+                torch.nn.utils.clip_grad_norm_(critic.parameters(), 1.0)  # 梯度裁剪 不能超过1.0*max梯度
                 critic_optimizer.step()
 
                 # 更新 Actor
@@ -175,7 +177,7 @@ def train():
                 for target_param, param in zip(critic_target.parameters(), critic.parameters()):
                     target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
 
-            if terminated or truncated:  # 回合结束条件
+            if done.item():
                 break
         rewards_all_episodes.append(rewards_one_episode)
         episodes_iter += 1
@@ -206,7 +208,7 @@ def test():
     hidden_dim = 128
 
     # 初始化 Actor 网络并加载模型
-    actor = PolicyNet(state_dim, action_dim, hidden_dim, action_bound).to(device)
+    actor = ActorNet(state_dim, action_dim, hidden_dim, action_bound).to(device)
     try:
         actor.load_state_dict(torch.load('DDPG-Pendulum_actor_net.pt', map_location=device))
         print("成功加载训练好的 Actor 模型")
