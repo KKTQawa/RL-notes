@@ -7,7 +7,7 @@
 
 $a=tanh(u)$
 
-$log π(a|s) = log π(u|s)-log(1-tanh^2(u))$
+$\log \pi(a|s) = \log \pi(u|s)-\log(1-\tanh^2(u))$
 
 
 ## 2. 计算时序差分TD误差
@@ -22,7 +22,7 @@ $$A_t=\sum_{l=0}^{\infty} (\gamma^l \lambda)^l \delta_{t+l}$$
 
 >标准化
 
-$$A_t = \frac{A_t - \mathbb{E}_t A_t}{\sqrt{\mathbb{Var}_t A_t + \epsilon}}$$
+$$A_t = \frac{A_t - \mathbb{E}_t A_t}{\sqrt{\operatorname{Var}_t A_t + \epsilon}}$$
 
 ## 4.重复 $K$ 次PPO更新
 

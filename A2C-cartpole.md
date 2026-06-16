@@ -12,11 +12,11 @@ $A_t = y_t - Q_{t}(s_t)$
 
 ## 3.Actor网络更新
 
-$a_{Loss} = -\sum_{N} log π(a|s) * A_t$
+$a_{\text{Loss}} = -\sum_{N} \log \pi(a|s) * A_t$
 
 ## 4.Critic网络更新
 
-$Critic_{Loss} = MSE (y_t\; ,Q_{t}(s_t))$
+$\text{Critic}_{\text{Loss}} = \text{MSE} (y_t\; ,Q_{t}(s_t))$
 
 ## 5.延迟更新目标网络(每隔几步更新一次)
 

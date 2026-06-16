@@ -6,7 +6,7 @@
 
 确定性策略+探索性噪声
 
-$a_t = \pi(s_t)+N(0, noise_std²)$
+$a_t = \pi(s_t)+\mathcal{N}(0, \text{noise\_std}^2)$
 
 ## 2.从历史经验中采样单个批次
 
