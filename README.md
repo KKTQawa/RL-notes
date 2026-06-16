@@ -4,36 +4,9 @@
 
 每个算法-环境组合都有独立的脚本，便于理解算法流程和实验对比。
 
-## 算法列表
+## 算法/环境列表
 
-### 基于价值的方法
-- **Q-Learning**: Q_table-MountainCar_v0.py, Q_table-Acrobot-v1.py
-- **DQN**: DQN-CartPole.py
-- **Value Iteration**: value_iteration-FrozenLake.py
-
-### 基于策略的方法
-- **REINFORCE**: REINFORCE-InvertedPendulum-v4.py
-
-### Actor-Critic方法
-- **A2C**: A2C-cartpole.py
-- **PPO**: PPO-Pendulum.py
-
-### 确定性策略梯度方法
-- **DDPG**: DDPG-Pendulum.py
-- **TD3**: TD3-Pendulum.py
-
-### 最大熵方法
-- **SAC**: SAC-HalfCheetah.py, SAC-Pendulum_actor.pt, SAC-BC-Pendulum.py
-
-## 环境列表
-
-- CartPole-v1
-- Pendulum-v1
-- MountainCar-v0
-- Acrobot-v1
-- InvertedPendulum-v4
-- HalfCheetah-v4
-- FrozenLake-v1
+> 见文件列表
 
 ## 项目结构
 
