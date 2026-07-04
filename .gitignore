@@ -38,3 +38,5 @@ env/
 *.pkl
 *.pickle
 
+node_modules/
+

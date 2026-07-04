@@ -12,6 +12,8 @@
 
 ```
 .
+├── multiRL/                   # 多智能体强化学习算法实现笔记
+├── vizdoom /                  # vizdoom库RL算法试验
 ├── README.md
 ├── all.txt                    # 包含所有gymnasium环境的id
 ├── test_env.py                # 用于快速查看环境信息
@@ -54,5 +56,3 @@ python DQN-CartPole.py
 # 查看环境信息
 python test_env.py
 ```
-
-
