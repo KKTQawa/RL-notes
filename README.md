@@ -48,7 +48,7 @@ pip install "gymnasium[all]"
 
 ## 使用方法
 
-每个算法脚本独立运行
+每个算法脚本都是独立的
 
 ```bash
 
