@@ -1,0 +1,35 @@
+env_id: "rware-tiny-4ag-v2"
+env_seed: 1  # The random seed of the environment.
+max_episode_steps: 2500
+
+representation_hidden_size: [64, ]
+#q_hidden_size: [128, ]  # the units for each hidden layer
+q_hidden_size: []  # the units for each hidden layer
+hidden_dim_mixing_net: 32  # hidden units of mixing network
+hidden_dim_hyper_net: 64  # hidden units of hyper network
+
+buffer_size: 200000
+batch_size: 256
+learning_rate: 0.0005
+gamma: 0.995  # discount factor
+double_q: True  # use double q learning
+
+start_greedy: 1.0
+end_greedy: 0.05
+decay_step_greedy: 1700000
+start_training: 1000  # start training after n steps
+running_steps: 2000000
+training_frequency: 1
+sync_frequency: 100
+
+use_grad_clip: True
+grad_clip_norm: 0.5
+
+eval_interval: 100000
+test_episode: 1
+model_dir: "models/qmix/"
+log_dir: "logs/qmix/"
+
+mode: "train"
+render_mode: "rgb_array" # Choices: 'human', 'rgb_array'.
+device: "cpu"  # Choose an calculating device. PyTorch: "cpu", "cuda:0"; TensorFlow: "cpu"/"CPU", "gpu"/"GPU"; MindSpore: "CPU", "GPU", "Ascend", "Davinci".

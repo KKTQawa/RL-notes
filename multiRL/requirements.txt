@@ -1,0 +1,5 @@
+mpe2
+pettingzoo
+shimmy
+shimmy[openspiel]
+

@@ -1,151 +1,87 @@
-import gymnasium as gym
-from vizdoom import gymnasium_wrapper  # noqa: F401  (必须导入注册环境)
-import ale_py
+from mpe2 import simple_push_v3
+from shimmy import OpenSpielCompatibilityV0
+from pettingzoo.butterfly import pistonball_v6
 import os
-
-ENV_LIST = [
-    "ALE/Adventure-v5",
-    "ALE/AirRaid-v5",
-    "ALE/Alien-v5",
-    "ALE/Amidar-v5",
-    "ALE/Assault-v5",
-    "ALE/Asterix-v5",
-    "ALE/Asteroids-v5",
-    "ALE/Atlantis2-v5",
-    "ALE/Atlantis-v5",
-    "ALE/Backgammon-v5",
-    "ALE/BankHeist-v5",
-    "ALE/BasicMath-v5",
-    "ALE/BattleZone-v5",
-    "ALE/BeamRider-v5",
-    "ALE/Berzerk-v5",
-    "ALE/Blackjack-v5",
-    "ALE/Bowling-v5",
-    "ALE/Boxing-v5",
-    "ALE/Breakout-v5",
-    "ALE/Carnival-v5",
-    "ALE/Casino-v5",
-    "ALE/Centipede-v5",
-    "ALE/ChopperCommand-v5",
-    "ALE/CrazyClimber-v5",
-    "ALE/Crossbow-v5",
-    "ALE/Darkchambers-v5",
-    "ALE/Defender-v5",
-    "ALE/DemonAttack-v5",
-    "ALE/DonkeyKong-v5",
-    "ALE/DoubleDunk-v5",
-    "ALE/Earthworld-v5",
-    "ALE/ElevatorAction-v5",
-    "ALE/Enduro-v5",
-    "ALE/Entombed-v5",
-    "ALE/Et-v5",
-    "ALE/FishingDerby-v5",
-    "ALE/FlagCapture-v5",
-    "ALE/Freeway-v5",
-    "ALE/Frogger-v5",
-    "ALE/Frostbite-v5",
-    "ALE/Galaxian-v5",
-    "ALE/Gopher-v5",
-    "ALE/Gravitar-v5",
-    "ALE/Hangman-v5",
-    "ALE/HauntedHouse-v5",
-    "ALE/Hero-v5",
-    "ALE/HumanCannonball-v5",
-    "ALE/IceHockey-v5",
-    "ALE/Jamesbond-v5",
-    "ALE/JourneyEscape-v5",
-    "ALE/Kaboom-v5",
-    "ALE/Kangaroo-v5",
-    "ALE/KeystoneKapers-v5",
-    "ALE/KingKong-v5",
-    "ALE/Klax-v5",
-    "ALE/Koolaid-v5",
-    "ALE/Krull-v5",
-    "ALE/KungFuMaster-v5",
-    "ALE/LaserGates-v5",
-    "ALE/LostLuggage-v5",
-    "ALE/MarioBros-v5",
-    "ALE/MiniatureGolf-v5",
-    "ALE/MontezumaRevenge-v5",
-    "ALE/MrDo-v5",
-    "ALE/MsPacman-v5",
-    "ALE/NameThisGame-v5",
-    "ALE/Othello-v5",
-    "ALE/Pacman-v5",
-    "ALE/Phoenix-v5",
-    "ALE/Pitfall2-v5",
-    "ALE/Pitfall-v5",
-    "ALE/Pong-v5",
-    "ALE/Pooyan-v5",
-    "ALE/PrivateEye-v5",
-    "ALE/Qbert-v5",
-    "ALE/Riverraid-v5",
-    "ALE/RoadRunner-v5",
-    "ALE/Robotank-v5",
-    "ALE/Seaquest-v5",
-    "ALE/SirLancelot-v5",
-    "ALE/Skiing-v5",
-    "ALE/Solaris-v5",
-    "ALE/SpaceInvaders-v5",
-    "ALE/SpaceWar-v5",
-    "ALE/StarGunner-v5",
-    "ALE/Superman-v5",
-    "ALE/Surround-v5",
-    "ALE/Tennis-v5",
-    "ALE/Tetris-v5",
-    "ALE/TicTacToe3D-v5",
-    "ALE/TimePilot-v5",
-    "ALE/Trondead-v5",
-    "ALE/Turmoil-v5",
-    "ALE/Tutankham-v5",
-    "ALE/UpNDown-v5",
-    "ALE/Venture-v5",
-    "ALE/VideoCheckers-v5",
-    "ALE/VideoChess-v5",
-    "ALE/VideoCube-v5",
-    "ALE/VideoPinball-v5",
-    "ALE/WizardOfWor-v5",
-    "ALE/WordZapper-v5",
-    "ALE/YarsRevenge-v5",
-    "ALE/Zaxxon-v5",
+ENV_LISTS_CATEGORY = [
+    "Simple",
+    "Simple Adversary",
+    "Simple Crypto",
+    "Simple Formation",
+    "Simple Line",
+    "Simple Push",
+    "Simple Reference",
+    "Simple Speaker Listener",
+    "Simple Spread",
+    "Simple Tag",
+    "Simple World Comm",
+    "Collect Treasure"
 ]
+ENV_LISTS=[
+    "collect_treasure_v1",         
+    "simple_adversary_v3",           
+    "simple_crypto_v3",            
+    "simple_formation_v1",         
+    "simple_line_v1",               
+    "simple_push_v3",                
+    "simple_reference_v3",           
+    "simple_speaker_listener_v4",  
+    "simple_spread_v3",               
+    "simple_tag_v3",                
+    "simple_v3",                
+    "simple_world_comm_v3",          
+]                                  
+# from pettingzoo.butterfly import (
+#     cooperative_pong_v6,
+#     knights_archers_zombies_v10,
+#     pistonball_v6,
+# )
+# from pettingzoo.classic import (
+#     chess_v6,
+#     connect_four_v3,
+#     gin_rummy_v4,
+#     go_v5,
+#     hanabi_v5,
+#     leduc_holdem_v4,
+#     rps_v2,
+#     texas_holdem_no_limit_v6,
+#     texas_holdem_v4,
+#     tictactoe_v3,
+# )
+# from pettingzoo.sisl import multiwalker_v9, pursuit_v4
 
+env_id = "pistonball_v6"
+# observation_space: Box(0, 255, (457, 120, 3), uint8)
+# action_space: Box(-1.0, 1.0, (1,), float32)
+# agent: piston_0
 def run_env(env_id):
-    env = gym.make(env_id, render_mode="human")
-
-    # for env_id in gym.envs.registry.keys():
-    #     print(env_id)
-
-    print(f"Running environment: {env_id}")
-    print('env.spec:',env.spec)
-    print('observation_space:',env.observation_space)
-    print('action_space:',env.action_space)
-    env.close()
-    return
-    obs, info = env.reset()
 
     try:
-        while True:
-            #action = env.action_space.sample()
-            action=int(input("请输入动作: "))#0 -none,1 -shoot,2-right 3-left
+        env = pistonball_v6.env(render_mode="human")
+        env.reset(seed=42)
 
-            obs, reward, terminated, truncated, info = env.step(action)
-            print("状态:",obs)
-            print("奖励:",reward)
+        ep=0
+        for agent in env.agent_iter():
+            ep+=1
+            if ep==1:
+                print(f"Running environment: {env_id}")
+                print('observation_space:',env.observation_space(agent))
+                print('action_space:',env.action_space(agent))  
+                print("agent:",agent)
+            observation, reward, termination, truncation, info = env.last()
+            print("reward:",reward)
 
-            if terminated or truncated:
-                os.system("pause")
-                obs, info = env.reset()
-                break
+            if termination or truncation:
+                action = None
+            else:
+                # this is where you would insert your policy
+                action = env.action_space(agent).sample()
 
+            env.step(action)
 
     except KeyboardInterrupt:
         print("\nExiting:", env_id)
 
     env.close()
 
-
 if __name__ == "__main__":
-    for env_id in ENV_LIST:
-        run_env(env_id)
-    #run_env("ALE/Adventure-v5")
+    run_env(env_id)

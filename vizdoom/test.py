@@ -186,10 +186,12 @@ def train(
 def test(env_id="VizdoomBasic-v1", model=None, trial=3, device="cuda" if torch.cuda.is_available() else "cpu"):
     env = gym.make(env_id, render_mode="human")
 
-    obs, _ = env.reset()
-    state = preprocess_obs(obs)
+
 
     for ep in range(trial):
+
+        obs, _ = env.reset()
+        state = preprocess_obs(obs)
 
         total_reward = 0
 
