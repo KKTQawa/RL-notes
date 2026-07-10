@@ -2,139 +2,31 @@
 
 ## 目录
 
-1. [环境简介](#1-环境简介)
-2. [环境注册 ID 大全](#2-环境注册-id-大全)
-3. [自定义环境参数](#3-自定义环境参数)
-4. [动作与观测空间](#4-动作与观测空间)
-5. [Reward 机制](#5-reward-机制)
-6. [Human Play 交互](#6-human-play-交互)
-7. [修复 rware 库 Bug](#7-修复-rware-库-bug)
-8. [注意点（Tips）](#8-注意点tips)
+- [1. 简介](#1-简介)
+  - [核心枚举](#核心枚举)
+- [2. 注册环境 ID](#2-注册环境-id)
+  - [基础环境（自动注册）](#基础环境自动注册)
+  - [图像观测变体](#图像观测变体)
+  - [自定义列高变体](#自定义列高变体)
+  - [完全自定义网格](#完全自定义网格)
+- [3. 自定义环境参数](#3-自定义环境参数)
+- [4. 动作与观测空间](#4-动作与观测空间)
+  - [动作空间](#动作空间)
+  - [观测空间（默认 FLATTENED）](#观测空间默认-flattened)
+- [5. Reward 机制](#5-reward-机制)
+- [6. Human Play 交互](#6-human-play-交互)
+  - [启动](#启动)
+  - [按键操作](#按键操作)
+  - [运行示例](#运行示例)
+  - [重要说明](#重要说明)
+- [7. 注意点（Tips）](#7-注意点tips)
+- [8. pip install 2.0.0版本 rware 库 Bug](#8-pip-install-200版本-rware-库-bug)
+  - [问题](#问题)
+  - [原因](#原因)
+  - [修复操作](#修复操作)
+  - [验证修复](#验证修复)
 
----
-
-## 附：Issue 与 PR 示例内容
-
-以下内容可直接用于向 rware 上游仓库提交 Issue 和 Pull Request。
-
-### Issue 示例
-
-```markdown
-## Bug: `reset()` calls `self.render()` before `self.shelfs` is initialized, causing AttributeError
-
-**Describe the bug**
-
-When creating a `Warehouse` environment with `render_mode="human"` and calling `reset()`,
-an `AttributeError: 'Warehouse' object has no attribute 'shelfs'` is raised.
-
-**To Reproduce**
-
-```python
-from rware.warehouse import Warehouse
-
-env = Warehouse(
-    shelf_columns=3, column_height=8, shelf_rows=1, n_agents=2,
-    msg_bits=0, sensor_range=1, request_queue_size=2,
-    max_inactivity_steps=None, max_steps=500,
-    reward_type=0, render_mode="human",
-)
-env.reset()  # <-- AttributeError here
-```
-
-**Error traceback**
-
-```
-AttributeError: 'Warehouse' object has no attribute 'shelfs'
-
-During handling of the above exception, another exception occurred:
-
-  File "warehouse.py", line 763, in reset
-    self.render()
-  File "warehouse.py", line 956, in render
-    return self.renderer.render(self, return_rgb_array=mode == "rgb_array")
-  File "rendering.py", line 129, in render
-    self._draw_shelfs(env)
-  File "rendering.py", line 183, in _draw_shelfs
-    for shelf in env.shelfs:
-AttributeError: 'Warehouse' object has no attribute 'shelfs'
-```
-
-**Root cause**
-
-In `Warehouse.reset()` (warehouse.py:757), `self.render()` is called at line 763,
-but `self.shelfs` and `self.agents` are not initialized until lines 771 and 789 respectively.
-The renderer accesses `env.shelfs` in `_draw_shelfs()`, which doesn't exist yet.
-
-**Expected behavior**
-
-`reset()` should complete successfully when `render_mode="human"` is set.
-
-**Environment**
-
-- rware version: (current installed version)
-- Python: 3.x
-- OS: Windows 10
-```
-
-### PR 示例
-
-```markdown
-## Fix: Move `self.render()` after shelfs/agents initialization in `reset()`
-
-**Description**
-
-This PR fixes an `AttributeError` that occurs when calling `Warehouse.reset()`
-with `render_mode="human"`. The issue is that `self.render()` was called before
-`self.shelfs` and `self.agents` were initialized, causing the renderer to fail
-when trying to access `env.shelfs`.
-
-**Changes**
-
-In `warehouse.py`, the `reset()` method:
-
-1. Moved the `if self.render_mode == "human": self.render()` block from before
-   shelfs/agents creation to after both `self.shelfs` and `self.agents` are set up.
-
-**Before**
-
-```python
-super().reset(seed=seed, options=options)
-
-if self.render_mode == "human":
-    self.render()     # <-- self.shelfs doesn't exist yet
-
-Shelf.counter = 0
-Agent.counter = 0
-...
-
-self.shelfs = [...]   # shelfs created here
-self.agents = [...]   # agents created here
-```
-
-**After**
-
-```python
-super().reset(seed=seed, options=options)
-
-Shelf.counter = 0
-Agent.counter = 0
-...
-
-self.shelfs = [...]   # shelfs created first
-self.agents = [...]   # agents created first
-
-if self.render_mode == "human":
-    self.render()     # <-- now self.shelfs and self.agents exist
-```
-
-**Related issues**
-
-Closes #(issue number)
-```
-
----
-
-## 1. 环境简介
+## 1. 简介
 
 **RWARE**（Robotic Warehouse）是一个基于 Gymnasium 的多智能体仓库机器人模拟环境。
 
@@ -143,14 +35,10 @@ Closes #(issue number)
 - **仓库布局示意图**：
 
 ```
-shelf
-columns
-    vv
 ----------
--XX-XX-XX-        ^
--XX-XX-XX-  Column Height
--XX-XX-XX-        v
 ----------
+-XX----XX- 
+-XX----XX- 
 -XX----XX-   <\
 -XX----XX-   <- Shelf Rows
 -XX----XX-   </
@@ -159,7 +47,7 @@ columns
 ```
 
 - **G** = 目标（Goal）位置，送达货架到此处获得奖励
-- **XX** = 货架位置（不可通行）； **--** = 走廊/高速路（可通行）
+- **XX** = 货架位置,如果有货物则可以抬起； **--** = 走廊/高速路（可通行）
 
 ### 核心枚举
 
@@ -177,7 +65,7 @@ columns
 
 ---
 
-## 2. 环境注册 ID 大全
+## 2. 注册环境 ID 
 
 所有环境默认 `max_steps=500`，`column_height=8`，`sensor_range=1`，`msg_bits=0`。
 
@@ -258,14 +146,6 @@ env = gym.make(
     sensor_range=2,
 )
 ```
-
-### 常用 Wrapper（`rware.utils.wrappers`）
-
-| Wrapper | 作用 |
-|---------|------|
-| `FlattenAgents` | 将所有 agent 的动作/观测展平为单个向量，reward 求和 |
-| `DictAgents` | 将动作/观测包装为 `{"agent_0": ..., "agent_1": ...}` 字典格式 |
-| `FlattenSAObservation` | 仅将每个 agent 的观测展平 |
 
 ---
 
@@ -369,10 +249,20 @@ Step 3: Agent 1 reward = 0  (cumulative: [0.0, 0.0])
 actions = [Action.FORWARD, Action.LEFT]  # 每个 agent 一个动作
 obs, rews, done, trunc, info = env.step([a.value for a in actions])
 ```
+---
+## 7. 注意点（Tips）
+
+- **所有 agent 同时 `step()`**：环境核心逻辑要求传入一个长度为 `n_agents` 的动作列表，所有 agent **同步**执行动作，不存在轮流概念。`human_play.py` 只是简化 demo
+- **碰撞处理**：环境使用有向图 + 拓扑排序自动解决 agent 间的移动冲突，具有冲突避免机制
+- **通信**：`msg_bits > 0` 时，agent 在动作中可附带消息（动作变为 `MultiDiscrete([5, 2, 2, ...])`），观测中也包含邻居消息
+- **Image 观测**：`-img` 模式返回 `(C, H, W)` 格式的多通道图像，各个通道由 `ImageLayer` 枚举控制
+- **自定义布局**：在 `Warehouse.__init__` 中传入 `layout` 字符串（`X`=货架，`.`=走廊，`G`=目标），可完全自定义仓库地图
 
 ---
 
-## 7. 修复 rware 库 Bug
+## 8. pip install 2.0.0版本 rware 库 Bug
+
+使用pip install 2.0.0版本会有以下错误：直接从github仓库中安装2.0.0则不会有
 
 ### 问题
 
@@ -420,12 +310,5 @@ python human_play.py --help
 # 如果能正常显示帮助信息，说明修复生效
 ```
 
----
 
-## 8. 注意点（Tips）
 
-- **所有 agent 同时 `step()`**：环境核心逻辑要求传入一个长度为 `n_agents` 的动作列表，所有 agent **同步**执行动作，不存在轮流概念。`human_play.py` 只是简化 demo
-- **碰撞处理**：环境使用有向图 + 拓扑排序自动解决 agent 间的移动冲突，具有冲突避免机制
-- **通信**：`msg_bits > 0` 时，agent 在动作中可附带消息（动作变为 `MultiDiscrete([5, 2, 2, ...])`），观测中也包含邻居消息
-- **Image 观测**：`-img` 模式返回 `(C, H, W)` 格式的多通道图像，各个通道由 `ImageLayer` 枚举控制
-- **自定义布局**：在 `Warehouse.__init__` 中传入 `layout` 字符串（`X`=货架，`.`=走廊，`G`=目标），可完全自定义仓库地图

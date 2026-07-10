@@ -16,7 +16,7 @@ double_q: True  # use double q learning
 
 start_greedy: 1.0
 end_greedy: 0.05
-decay_step_greedy: 1700000
+decay_step_greedy: 2500000
 start_training: 1000  # start training after n steps
 running_steps: 2000000
 training_frequency: 1

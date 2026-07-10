@@ -2,7 +2,7 @@
 
 ## 概述
 
-QMIX (Q-MIX) 是一种用于**合作式多智能体强化学习**的 value-based 算法。核心思想是：每个智能体 $i$ 学习独立的 $Q_i(\tau_i, a_i)$（使用 DRQN 处理部分可观测性），然后通过一个**混合网络（Mixing Network）**将所有 $Q_i$ 非线性的组合成全局 $Q_{tot}$，并保证：
+QMIX (Q-MIX) 是一种用于**合作式多智能体强化学习**的 value-based 算法。核心思想是：每个智能体 $i$ 学习独立的 $Q_i(\tau_i, a_i)$（使用 DRQN 处理部分可观测性），然后通过一个 **混合网络（Mixing Network）** 将所有 $Q_i$ 非线性的组合成全局 $Q_{tot}$，并保证：
 
 $$
 \frac{\partial Q_{tot}}{\partial Q_i} \ge 0, \quad \forall i
@@ -26,31 +26,33 @@ $$
 
 ### 1.2 Mixing Network（混合网络）
 
-Mixing Network 接收所有智能体的 $Q_i$ 和一个**全局状态 $s_{tot}$**（由所有观测拼接而成 $s_{tot} = [o_1, o_2, \dots, o_n]$），输出 $Q_{tot}$：
+Mixing Network 接收所有智能体的 $Q_i$ 和一个**全局状态 $s_{tot}$**（这里简单的由所有观测拼接而成 $s_{tot} = [o_1, o_2, \dots, o_n]$），输出 $Q_{tot}$：
 
 $$
-Q_{tot} = f_{\text{mix}}(Q_1, Q_2, \dots, Q_n; s_{tot})
+Q_{tot} = MixingNet(Q_1, Q_2, \dots, Q_n; s_{tot})
 $$
 
 内部结构为两层的超网络（Hypernetwork）：
 
-- **第一层权重** $W_1 = |\text{MLP}_1(s_{tot})|$，形状 $(n\_agents \times hidden\_dim)$
-- **第一层偏置** $b_1 = \text{Linear}(s_{tot})$  
-- **第二层权重** $W_2 = |\text{MLP}_2(s_{tot})|$，形状 $(hidden\_dim \times 1)$
-- **第二层偏置** $b_2 = \text{MLP}_3(s_{tot})$
 
-前向计算：
+-   $Q_{tot}$ 形状 (-1, 1, self.n_agents)
+-  $W_1 = |\text{MLP}_1(Q_{tot})|$，形状 (-1, 1, self.n_agents)
+-  $b_1 = \text{Linear}(Q_{tot})$  ,形状(-1, 1, self.dim_hidden)
+-  $W_2 = |\text{MLP}_2(Q_{tot})|$，形状 $(hidden\_dim \times 1)$
+-  $b_2 = \text{MLP}_3(Q_{tot})$，形状(-1, 1, 1)
+
+forward：
 
 $$
 \begin{aligned}
-h &= \text{ELU}(Q_{ag} W_1 + b_1) \\
+h &= \text{ELU}(Q_{tot} W_1 + b_1) \\
 Q_{tot} &= h W_2 + b_2
 \end{aligned}
 $$
 
-其中 $Q_{ag} \in \mathbb{R}^{1 \times n\_agents}$ 是各智能体的 Q 值向量。
+$W_1$ $W_2$ 都添加绝对值保证权重为正，从而满足**单调性约束**。
 
-使用 $\text{abs}(\cdot)$ 保证权重为正，从而满足**单调性约束**。
+推理时仅由**Agent Network**得到每个智能体的action，不使用**Mixing Network**。
 
 ---
 
@@ -95,11 +97,12 @@ $$
 
 **基本版本（单 Q）：**
 
+
 $$
-Q_{tot}^{target} = \bar{r} + \gamma (1 - done) \cdot Q_{tot}^{target\_net}(o^{t+1}, a^{*, t+1})
+Q_{tot}^{target} = r' + \gamma (1 - done) \cdot \max_{a}Q_{tot}^{target\_net}(o^{t+1}, a)
 $$
 
-其中 $\bar{r} = \frac{1}{N}\sum_i r_i$ 是所有智能体奖励的均值。
+其中 r' 视情况可以为所有智能体奖励的均值也可以是总和，这里取总和
 
 **Double Q 版本：**
 
@@ -110,7 +113,7 @@ a^{*, t+1} = \arg\max_{a} Q_i^{eval}(o_i^{t+1}, a)
 $$
 
 $$
-Q_{tot}^{target} = \bar{r} + \gamma (1 - done) \cdot Q_{tot}^{target\_net}(Q^{target}(o^{t+1}, a^{*, t+1}), s^{t+1})
+Q_{tot}^{target} = r' + \gamma (1 - done) \cdot Q_{tot}^{target\_net}(Q^{target}(o^{t+1}, a^{*, t+1}), s^{t+1})
 $$
 
 ### Step 4: 计算 Loss
@@ -136,6 +139,8 @@ $$
 $$
 \epsilon \gets \max(\epsilon_{end},\; \epsilon - \Delta_\epsilon)
 $$
+
+经过 `decay_step_greedy` 步，最终 $\epsilon$ 会从 `start_greedy` 衰减到 `end_greedy`。
 
 ---
 

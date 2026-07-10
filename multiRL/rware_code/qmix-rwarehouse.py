@@ -84,7 +84,7 @@ class MARLReplayBuffer:
             'batch_size': bs,
         }
 
-# ============ Representation ============
+# ============ Representation（特征提取器） ============
 class BasicMLP(nn.Module):
     def __init__(self, input_shape, hidden_sizes, activation=nn.ReLU, device=None):
         super().__init__()
@@ -109,7 +109,7 @@ class BasicQhead(nn.Module):
         super().__init__()
         layers = []
         inp = state_dim
-        for h in hidden_sizes:
+        for h in hidden_sizes:#hiddent_size是一个数组，[x,y,...],代表隐藏层的维度
             layers.extend(mlp_block(inp, h, activation, device))
             inp = h
         layers.extend(mlp_block(inp, n_actions, None, device))
@@ -149,11 +149,11 @@ class MixingNet(nn.Module):
         agent_qs = values_n.reshape(-1, 1, self.n_agents)
         w1 = torch.abs(self.hyper_w_1(states)).view(-1, self.n_agents, self.dim_hidden)
         b1 = self.hyper_b_1(states).view(-1, 1, self.dim_hidden)
-        hidden = F.elu(torch.bmm(agent_qs, w1) + b1)
+        hidden = F.elu(torch.bmm(agent_qs, w1) + b1)#(1,n_agents)*(n_agents,dim_hidden)=(1,dim_hidden)
         w2 = torch.abs(self.hyper_w_2(states)).view(-1, self.dim_hidden, 1)
         b2 = self.hyper_b_2(states).view(-1, 1, 1)
         y = torch.bmm(hidden, w2) + b2
-        return y.view(-1, 1)
+        return y.view(-1, 1)#(-1,1,1)->(-1,1),去掉了多余的维度
 
 # ============ QMIX_policy (policy) ============
 class QMIX_policy(nn.Module):
@@ -244,7 +244,7 @@ class QMIXAgent:
         total_iters = (config.running_steps - config.start_training) // config.training_frequency
         self.scheduler = torch.optim.lr_scheduler.LinearLR(
             self.optimizer, start_factor=1.0, end_factor=0.5, total_iters=total_iters
-        )
+        )#学习率调度器，动态调整学习率 这里是线性衰减
         self.mse_loss = nn.MSELoss()
         self.iterations = 0
 
@@ -282,7 +282,7 @@ class QMIXAgent:
 
         sample = self.memory.sample()
         bs = sample['batch_size']
-        agent_ids = torch.eye(self.n_agents, device=self.device).unsqueeze(0).expand(bs, -1, -1)
+        agent_ids = torch.eye(self.n_agents, device=self.device).unsqueeze(0).expand(bs, -1, -1)#(bs, n_agents, n_agents)每个agent都会分配到一个【n_agents】的one-hot向量作为标识
 
         obs = torch.as_tensor(sample['obs'], dtype=torch.float32, device=self.device)
         obs_next = torch.as_tensor(sample['obs_next'], dtype=torch.float32, device=self.device)
@@ -292,30 +292,32 @@ class QMIXAgent:
         state = torch.as_tensor(sample['state'], dtype=torch.float32, device=self.device)
         state_next = torch.as_tensor(sample['state_next'], dtype=torch.float32, device=self.device)
 
-        rewards_tot = rewards.mean(dim=-1, keepdim=True)
+        rewards_tot = rewards.all(dim=-1, keepdim=True)
         terminals_tot = terminals.all(dim=-1, keepdim=True).float()
 
         q_eval_all = self.policy(obs, agent_ids)
+        #print("q_eval_all:", q_eval_all.shape)#torch.Size([batch_size, n_agents, action_dim])
+        #print("actions:", actions.shape)#torch.Size([batch_size, n_agents])
         q_eval_chosen = q_eval_all.gather(-1, actions.unsqueeze(-1)).squeeze(-1)
 
         with torch.no_grad():
-            q_next_all = self.policy.target_q(obs_next, agent_ids)
+            q_next_all = self.policy.target_q(obs_next, agent_ids)#q_next_all是目标网络根据obs_next输出的Q值列表
             if self.double_q:
                 next_actions = self.policy(obs_next, agent_ids).argmax(dim=-1, keepdim=True)
-                q_next_chosen = q_next_all.gather(-1, next_actions).squeeze(-1)
+                q_next_chosen = q_next_all.gather(-1, next_actions).squeeze(-1)#在act一次然后根据动作选择Q值
             else:
-                q_next_chosen = q_next_all.max(dim=-1).values
+                q_next_chosen = q_next_all.max(dim=-1).values#直接选最大的Q值
 
-        q_tot_eval = self.policy.q_tot(q_eval_chosen, state)
+        q_tot_eval = self.policy.q_tot(q_eval_chosen, state)#原始网络
         q_tot_next = self.policy.target_q_tot(q_next_chosen, state_next)
-        q_tot_target = rewards_tot + (1 - terminals_tot) * self.gamma * q_tot_next
+        q_tot_target = rewards_tot + (1 - terminals_tot) * self.gamma * q_tot_next#目标网络
 
         loss = self.mse_loss(q_tot_eval, q_tot_target.detach())
 
         self.optimizer.zero_grad()
         loss.backward()
         if self.use_grad_clip:
-            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), self.grad_clip_norm)
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), self.grad_clip_norm, norm_type='inf')#如果x>self.grad_clip_norm，就将其都等比例缩放 默认x=L2范数
         self.optimizer.step()
         self.scheduler.step()
 
@@ -323,7 +325,7 @@ class QMIXAgent:
         return loss.item(), q_tot_eval.mean().item()
 
     def update_epsilon(self):
-        self.e_greedy = max(self.config.end_greedy, self.e_greedy - self.delta_egreedy)
+        self.e_greedy = max(self.config.end_greedy, self.e_greedy - self.delta_egreedy)#从start_greedy线性衰减到end_greedy，花费decay_step_greedy步数
 
     def save_model(self, path):
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -365,7 +367,8 @@ class RoboticWarehouseEnv:
         self.env.close()
 
 def get_global_state(obs):
-    return obs.reshape(-1)
+    #自动计算输出维度大小，保持元素数量不变
+    return obs.reshape(-1)#(n_agents, obs_dim)->(n_agents*obs_dim)
 
 def draw(ep_total_rewards, ep_avg_rewards, ep_losses, save_dir):
     import matplotlib
