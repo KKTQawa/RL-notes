@@ -318,9 +318,8 @@ if self.render_mode == "human":
 
 ### 验证修复
 
-```bash
-conda activate rlrl
-python human_play.py --help
+```powershell
+python human_play.py 
 # 如果能正常显示帮助信息，说明修复生效
 ```
 

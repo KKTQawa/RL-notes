@@ -21,13 +21,27 @@ import gymnasium as gym
 
 from rware.warehouse import Action
 
+# 在此编辑自定义布局，设为 None 则使用 --env 预设布局
+# "." = 走廊, "X" = 货架, "G" = 交付点
+CUSTOM_LAYOUT = """
+..G..
+.....
+.X.X.
+.X.X.
+G.X.G
+.X.X.
+.X.X.
+.....
+..G..
+""".strip()
+
 
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument(
         "--env",
         type=str,
-        default="rware-tiny-2ag-v2",
+        default="rware-large-7ag-easy-v2",
         help="Environment to use",
     )
     parser.add_argument(
@@ -52,12 +66,23 @@ class InteractiveRWAREEnv:
         env: str,
         max_steps,
         display_info: bool = True,
+        use_custom_layout: bool = False,
+        layout: str | None = None,
+        n_agents: int = None,
+        request_queue_size: int = None,
     ):
-        self.env = gym.make(env, render_mode="human", max_steps=max_steps)
+        env_kwargs = dict(render_mode="human", max_steps=max_steps)
+        #使用自定义布局
+        if use_custom_layout:
+            env_kwargs["layout"] = layout
+            env_kwargs["n_agents"] = n_agents
+            env_kwargs["request_queue_size"] = request_queue_size
+        self.env = gym.make(env, **env_kwargs)
         self.n_agents = self.env.unwrapped.n_agents
         self.running = True
         self.current_agent_index = 0
         self.current_action = None
+        self.window_scale = 1.0 #窗口缩放比例
 
         self.t = 0
         self.ep_returns = np.zeros(self.n_agents)
@@ -74,6 +99,12 @@ class InteractiveRWAREEnv:
 
         obss, _ = self.env.reset()
         self.env.render()
+        renderer = self.env.unwrapped.renderer
+        renderer.grid_size = int(30 * self.window_scale)
+        renderer.icon_size = int(20 * self.window_scale)
+        renderer.width = 1 + renderer.cols * (renderer.grid_size + 1)
+        renderer.height = 2 + renderer.rows * (renderer.grid_size + 1)
+        renderer.window.set_size(renderer.width, renderer.height)
         self.env.unwrapped.renderer.window.on_key_press = self._key_press
 
         if self.display_info:
@@ -171,7 +202,9 @@ class InteractiveRWAREEnv:
             if self.current_action is not None:
                 actions = [Action.NOOP] * self.n_agents
                 actions[self.current_agent_index] = self.current_action
-                obss, rews, done, trunc, info = self.env.step([act.value for act in actions])
+                obss, r, done, trunc, info = self.env.step([act.value for act in actions])
+                #rews=example_reward_shaping(r,self.env.unwrapped)
+                rews=r
                 self.ep_returns += np.array(rews)
                 self.t += 1
 
@@ -191,8 +224,49 @@ class InteractiveRWAREEnv:
             self.env.render()
         self.env.close()
 
+# ---------------------------------------------------------------------------
+#  Custom reward function examples
+#  Each receives the unwrapped Warehouse env and must return a list of floats
+#  (one reward per agent).
+# ---------------------------------------------------------------------------
+def example_reward_shaping(rewards,env):
+    """Penalise inactivity and reward deliveries individually."""
+    for agent in env.agents:
+        # small step penalty to encourage movement
+        if agent.req_action in (Action.NOOP,):
+            rewards[agent.id - 1] -= 0.01
+    # reward any agent that just delivered a shelf
+    for y, x in env.goals:
+        shelf_id = env.grid[1, x, y]  # _LAYER_SHELFS
+        if shelf_id and env.shelfs[shelf_id - 1] in env.request_queue:
+            agent_id = env.grid[0, x, y]  # _LAYER_AGENTS
+            if agent_id:
+                rewards[agent_id - 1] += 2.0
+    return list(rewards)
 
+
+def example_curiosity_reward(rewards,env):
+    """Reward agents for visiting new locations (simple count-based)."""
+    if not hasattr(example_curiosity_reward, "visit_counts"):
+        example_curiosity_reward.visit_counts = {}
+
+    for agent in env.agents:
+        key = (agent.id, agent.x, agent.y)
+        count = example_curiosity_reward.visit_counts.get(key, 0)
+        if count == 0:
+            rewards[agent.id - 1] += 0.1
+        example_curiosity_reward.visit_counts[key] = count + 1
+    return list(rewards)
 
 if __name__ == "__main__":
     args = parse_args()
-    InteractiveRWAREEnv(env=args.env, max_steps=args.max_steps, display_info=args.display_info)
+    InteractiveRWAREEnv(
+        env=args.env,
+        max_steps=args.max_steps,
+        display_info=args.display_info,
+        #如果使用自定义布局，需要指定n_agents和request_queue_size
+        use_custom_layout=False,
+        layout=CUSTOM_LAYOUT,
+        n_agents=3,#智能体数量
+        request_queue_size=4,#请求队列大小，必须小于货架数量
+    )
