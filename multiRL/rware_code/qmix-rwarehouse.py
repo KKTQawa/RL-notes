@@ -328,7 +328,7 @@ class QMIXAgent:
         self.e_greedy = max(self.config.end_greedy, self.e_greedy - self.delta_egreedy)#从start_greedy线性衰减到end_greedy，花费decay_step_greedy步数
 
     def save_model(self, path):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        #os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save(self.policy.state_dict(), path)
 
     def load_model(self, path):
@@ -365,6 +365,32 @@ class RoboticWarehouseEnv:
 
     def close(self):
         self.env.close()
+
+    #自定义奖励函数: 对原始奖励进行塑形，鼓励高效完成任务
+    def reward_fn(self, reward):
+        from rware.warehouse import Action
+        """
+        class Action(Enum):
+            NOOP = 0
+            FORWARD = 1
+            LEFT = 2
+            RIGHT = 3
+            TOGGLE_LOAD = 4  # 装载/放下货架
+        """
+        unwrapped_env=self.env.unwrapped
+        reward = np.array(reward, dtype=np.float32)
+        # 1. 惩罚NOOP（原地不动），鼓励持续移动
+        for agent in unwrapped_env.agents:
+            if agent.req_action == Action.NOOP:
+                reward[agent.id - 1] -= 0.01
+        # 2. 搬运请求队列中的货架时给予微小奖励，引导智能体关注有效目标
+        for agent in unwrapped_env.agents:
+            if agent.carrying_shelf is not None:
+                if agent.carrying_shelf in unwrapped_env.request_queue:
+                    reward[agent.id - 1] += 0.03
+        # 3. 每步微小时间惩罚，鼓励尽快完成配送
+        reward -= 0.035
+        return reward
 
 def get_global_state(obs):
     #自动计算输出维度大小，保持元素数量不变
@@ -437,6 +463,7 @@ def train(config):
 
         agent.store_experience(obs, actions[0], r, terminal, obs_next, state, state_next)
 
+        r = env.reward_fn(r)
         episode_total_reward += r.sum()
         episode_steps += 1
 
@@ -463,8 +490,10 @@ def train(config):
                 best_avg_reward = avg_r
 
             if config.use_tqdm:
-                pbar.set_description(f"Ep {train_episode} R={episode_total_reward:.2f} avgR={avg_r:.2f} Avg_Loss: {avg_loss:.4f} Steps: {episode_steps}")
-
+                pbar.set_description(
+                    f"Ep {train_episode} R={episode_total_reward/n_agents:.4f} avgR={avg_r:.4f} "
+                    f"Loss={avg_loss:.4f} Steps={episode_steps}"
+                )
             episode_total_reward = 0.0
             episode_steps = 0
             current_losses = []
@@ -486,11 +515,15 @@ def train(config):
 
 
 @torch.no_grad()
-def evaluate(config, agent=None):
+def evaluate(config, agent=None,is_pause=False):
     if agent is None:
         agent = QMIXAgent(config)
-        agent.load_model(f"{config.model_dir}/final.pth")
-    print(f"Evaluation mode: {config.render_mode}")
+        try:
+            agent.load_model(f"{config.load_dir}")
+            print(f"Load model from {config.load_dir} success")
+        except:
+            print(f"Load model from {config.load_dir} failed")
+    #print(f"Evaluation mode: {config.render_mode}")
     env = RoboticWarehouseEnv(config)
     ep_rewards = []
     for ep in range(config.test_episode):
@@ -516,15 +549,19 @@ def evaluate(config, agent=None):
             ep_r += reward.sum()
             steps += 1
             env.env.render()
-            #os.system("pause")
+            if is_pause:
+                os.system("pause")
         ep_rewards.append(ep_r)
+        print(f"Test Episode {ep}: reward = {ep_r:.2f}, steps = {steps}")
+        if is_pause:
+            os.system("pause")
     env.close()
     return np.mean(ep_rewards)
 
 
 def main():
     # parse args from yaml
-    config_path = os.path.join(os.path.dirname(__file__), 'rware-tiny-2ag-v2.yaml')
+    config_path = os.path.join(os.path.dirname(__file__), 'qmix-rware-tiny-2ag-v2.yaml')
     #basic_path = os.path.join(os.path.dirname(__file__), 'basic.yaml')
 
     algo_config = load_yaml(config_path)

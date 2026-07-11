@@ -1,6 +1,6 @@
 env_id: "rware-tiny-4ag-v2"
 env_seed: 1  # The random seed of the environment.
-max_episode_steps: 2500
+max_episode_steps: 200
 
 representation_hidden_size: [64, ]
 #q_hidden_size: [128, ]  # the units for each hidden layer

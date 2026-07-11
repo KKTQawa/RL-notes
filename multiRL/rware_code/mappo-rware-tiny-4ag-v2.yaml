@@ -1,0 +1,43 @@
+env_id: "rware-tiny-4ag-v2"
+env_seed: 1
+max_episode_steps: 200
+
+actor_hidden_size: [64,]
+critic_hidden_size: [256,]
+activation: "relu"
+
+buffer_size: 10000
+n_minibatch: 16  # number of minibatches per epoch; batch_size = buffer_size // n_minibatch (full batch when =1)
+learning_rate: 0.0003
+gamma: 0.99
+gae_lambda: 0.95
+clip_range: 0.2
+vf_coef: 0.5
+ent_coef: 0.05
+n_epochs: 5
+
+running_steps: 1000000
+eval_interval: 20000
+test_episode: 3
+model_dir: "models/mappo/"
+load_dir: "E:/RL/baseRL/multiRL/rware_code/models/mappo/20260710-210821/0.0008_final.pth"
+log_dir: "logs/mappo/"
+
+use_grad_clip: True
+grad_clip_norm: 10.0
+
+# loss options
+use_value_clip: True
+value_clip_range: 0.2
+use_huber_loss: True
+huber_delta: 10.0
+
+# lr scheduler
+use_linear_lr_decay: False
+end_factor_lr_decay: 0.5
+
+# mode: "test"
+# render_mode: "human"
+mode: "train"
+render_mode: "rgb_array"
+device: "cpu"
